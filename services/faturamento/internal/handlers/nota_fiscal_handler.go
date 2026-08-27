@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -219,22 +221,29 @@ func (h *NotaFiscalHandler) Imprimir(c *gin.Context) {
 
 	nota, status, err := h.buscarNotaPorID(id)
 	if err != nil {
-		h.reabrirNota(id)
+		h.desfazerImpressao(id, nil)
 		respondError(c, status, err.Error())
 		return
 	}
 
+	// debitados acompanha os itens já confirmados no Estoque, para que uma
+	// falha no meio do loop (ou no fechamento logo depois) consiga desfazer
+	// exatamente o que já foi aplicado — sem isso, uma reimpressão depois de
+	// reabrir a nota debitaria os mesmos itens de novo.
+	debitados := make([]models.ItemNota, 0, len(nota.Itens))
 	for _, item := range nota.Itens {
 		if err := h.Estoque.Debitar(c.Request.Context(), item.ProdutoID, item.Quantidade); err != nil {
-			h.reabrirNota(id)
+			h.desfazerImpressao(id, debitados)
 			respondErroDebito(c, err)
 			return
 		}
+		debitados = append(debitados, item)
 	}
 
 	if err := h.DB.Model(&models.NotaFiscal{}).
 		Where("id = ?", id).
 		Update("status", models.StatusFechada).Error; err != nil {
+		h.desfazerImpressao(id, debitados)
 		respondError(c, http.StatusInternalServerError, "erro ao fechar nota fiscal")
 		return
 	}
@@ -259,11 +268,21 @@ func (h *NotaFiscalHandler) Imprimir(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json; charset=utf-8", corpo)
 }
 
-// reabrirNota volta a nota para Aberta após uma falha no débito, para que
-// ela possa ser reimpressa depois. Erro aqui só é logado: já estamos no
-// caminho de erro do Imprimir e a resposta ao cliente não deve mudar por
-// causa disso.
-func (h *NotaFiscalHandler) reabrirNota(id uint64) {
+// desfazerImpressao compensa (creditar de volta) cada item já debitado com
+// sucesso e só então reabre a nota, para que uma reimpressão não repita um
+// débito que já foi confirmado. Best-effort: se o Estoque também estiver
+// indisponível para a compensação, o saldo fica temporariamente incorreto —
+// sem uma fila de compensação persistente (fora do escopo deste desafio),
+// não há como garantir isso de forma mais forte aqui. O erro só é logado:
+// já estamos no caminho de erro do Imprimir e a resposta ao cliente não deve
+// mudar por causa disso.
+func (h *NotaFiscalHandler) desfazerImpressao(id uint64, debitados []models.ItemNota) {
+	for _, item := range debitados {
+		if err := h.Estoque.Creditar(context.Background(), item.ProdutoID, item.Quantidade); err != nil {
+			log.Printf("falha ao compensar débito do produto %d na nota %d: %v", item.ProdutoID, id, err)
+		}
+	}
+
 	h.DB.Model(&models.NotaFiscal{}).
 		Where("id = ? AND status = ?", id, models.StatusProcessando).
 		Update("status", models.StatusAberta)

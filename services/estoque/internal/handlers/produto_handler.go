@@ -30,6 +30,10 @@ type debitarRequest struct {
 	Quantidade int `json:"quantidade" binding:"required,gt=0"`
 }
 
+type creditarRequest struct {
+	Quantidade int `json:"quantidade" binding:"required,gt=0"`
+}
+
 func respondError(c *gin.Context, status int, mensagem string) {
 	c.JSON(status, gin.H{"error": mensagem})
 }
@@ -124,6 +128,47 @@ func (h *ProdutoHandler) Debitar(c *gin.Context) {
 			return
 		}
 		respondError(c, http.StatusConflict, "saldo insuficiente: disponível "+strconv.Itoa(produto.Saldo))
+		return
+	}
+
+	produto, status, err := h.buscarProdutoPorID(id)
+	if err != nil {
+		respondError(c, status, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, produto)
+}
+
+// Creditar godoc
+// POST /produtos/:id/creditar
+// Endpoint interno, usado pelo Faturamento para compensar (devolver) um
+// débito já confirmado quando uma impressão precisa ser desfeita — ex.: um
+// item posterior da mesma nota não pôde ser debitado, ou o fechamento da
+// nota falhou depois de todos os débitos já terem sido confirmados.
+func (h *ProdutoHandler) Creditar(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "id inválido")
+		return
+	}
+
+	var req creditarRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "dados inválidos: "+err.Error())
+		return
+	}
+
+	result := h.DB.Model(&models.Produto{}).
+		Where("id = ?", id).
+		Update("saldo", gorm.Expr("saldo + ?", req.Quantidade))
+
+	if result.Error != nil {
+		respondError(c, http.StatusInternalServerError, "erro ao creditar saldo")
+		return
+	}
+
+	if result.RowsAffected == 0 {
+		respondError(c, http.StatusNotFound, "produto não encontrado")
 		return
 	}
 

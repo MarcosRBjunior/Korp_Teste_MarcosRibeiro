@@ -47,7 +47,7 @@ func New(baseURL string, timeout time.Duration) *Client {
 	}
 }
 
-type debitarRequest struct {
+type ajusteSaldoRequest struct {
 	Quantidade int `json:"quantidade"`
 }
 
@@ -56,16 +56,29 @@ type debitarRequest struct {
 // 409 (saldo insuficiente) e 404 (produto inexistente) são erros de negócio
 // e não abrem o breaker.
 func (c *Client) Debitar(ctx context.Context, produtoID uint, quantidade int) error {
-	body, err := json.Marshal(debitarRequest{Quantidade: quantidade})
+	return c.ajustarSaldo(ctx, "debitar", produtoID, quantidade)
+}
+
+// Creditar chama POST /produtos/{id}/creditar — devolve ao Estoque um débito
+// já confirmado. Usado para compensar itens de uma nota já debitados quando
+// um item seguinte falha, ou quando o fechamento da nota falha depois de
+// todos os débitos terem sido confirmados: sem isso, o retry de uma
+// impressão reaberta debitaria os mesmos itens de novo.
+func (c *Client) Creditar(ctx context.Context, produtoID uint, quantidade int) error {
+	return c.ajustarSaldo(ctx, "creditar", produtoID, quantidade)
+}
+
+func (c *Client) ajustarSaldo(ctx context.Context, acao string, produtoID uint, quantidade int) error {
+	body, err := json.Marshal(ajusteSaldoRequest{Quantidade: quantidade})
 	if err != nil {
-		return fmt.Errorf("erro ao montar requisição de débito: %w", err)
+		return fmt.Errorf("erro ao montar requisição de %s: %w", acao, err)
 	}
 
 	resp, err := c.breaker.Execute(func() (*http.Response, error) {
 		req, err := http.NewRequestWithContext(
 			ctx,
 			http.MethodPost,
-			fmt.Sprintf("%s/produtos/%d/debitar", c.baseURL, produtoID),
+			fmt.Sprintf("%s/produtos/%d/%s", c.baseURL, produtoID, acao),
 			bytes.NewReader(body),
 		)
 		if err != nil {
@@ -84,10 +97,10 @@ func (c *Client) Debitar(ctx context.Context, produtoID uint, quantidade int) er
 		return resp, nil
 	})
 
+	// Timeout, conexão recusada, 5xx, breaker aberto (gobreaker.ErrOpenState) e
+	// chamada de teste rejeitada em half-open (gobreaker.ErrTooManyRequests)
+	// caem todos aqui: para o chamador, é tudo "estoque indisponível".
 	if err != nil {
-		if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
-			return ErrIndisponivel
-		}
 		return ErrIndisponivel
 	}
 	defer resp.Body.Close()

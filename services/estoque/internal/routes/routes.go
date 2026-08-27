@@ -36,6 +36,7 @@ func Setup(router *gin.Engine, db *gorm.DB, produtoHandler *handlers.ProdutoHand
 		produtos.GET("", produtoHandler.Listar)
 		produtos.GET("/:id", produtoHandler.BuscarPorID)
 		produtos.POST("/:id/debitar", produtoHandler.Debitar)
+		produtos.POST("/:id/creditar", produtoHandler.Creditar)
 	}
 }
 
