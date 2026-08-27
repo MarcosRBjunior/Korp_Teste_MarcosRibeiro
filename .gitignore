@@ -1,0 +1,21 @@
+# Go
+services/**/*.exe
+services/**/*.test
+services/**/vendor/
+
+# Node / Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Ambiente
+.env
+*.env.local
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Planejamento pessoal (não sobe para o repositório)
+projeto-notas-fiscais-go-angular.md

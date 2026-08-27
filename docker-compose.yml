@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: notas-fiscais-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # estoque:
+  #   build: ./services/estoque
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     DB_HOST: postgres
+  #     DB_NAME: estoque_db
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+  # faturamento:
+  #   build: ./services/faturamento
+  #   ports:
+  #     - "8082:8082"
+  #   environment:
+  #     DB_HOST: postgres
+  #     DB_NAME: faturamento_db
+  #     ESTOQUE_SERVICE_URL: http://estoque:8081
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+volumes:
+  postgres_data:
