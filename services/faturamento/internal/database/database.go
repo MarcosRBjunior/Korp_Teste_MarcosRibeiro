@@ -25,7 +25,7 @@ func Connect(cfg config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("falha ao conectar ao banco: %w", err)
 	}
 
-	if err := db.AutoMigrate(&models.NotaFiscal{}, &models.ItemNota{}); err != nil {
+	if err := db.AutoMigrate(&models.NotaFiscal{}, &models.ItemNota{}, &models.IdempotencyKey{}); err != nil {
 		return nil, fmt.Errorf("falha ao migrar o schema: %w", err)
 	}
 

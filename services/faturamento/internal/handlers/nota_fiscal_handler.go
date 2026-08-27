@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -13,6 +14,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// headerIdempotencyKey é opcional: quando ausente, a impressão é processada
+// normalmente, sem cache de resultado.
+const headerIdempotencyKey = "Idempotency-Key"
 
 // errNotaFechada sinaliza, dentro de uma transação, que a nota não está mais
 // Aberta — usado para distinguir esse caso do "não encontrada" no retorno HTTP.
@@ -167,13 +172,28 @@ func (h *NotaFiscalHandler) BuscarPorID(c *gin.Context) {
 //
 // Debita o saldo de cada item no Estoque (via circuit breaker) antes de
 // fechar a nota — nunca o contrário, para não fechar uma nota cujo saldo
-// não foi confirmado. A idempotência via header Idempotency-Key entra na
-// Fase 5.
+// não foi confirmado. Se o header Idempotency-Key vier preenchido e já
+// tiver sido usado com sucesso antes, devolve o resultado salvo sem repetir
+// o débito.
 func (h *NotaFiscalHandler) Imprimir(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		respondError(c, http.StatusBadRequest, "id inválido")
 		return
+	}
+
+	chaveIdempotencia := c.GetHeader(headerIdempotencyKey)
+	if chaveIdempotencia != "" {
+		var cache models.IdempotencyKey
+		err := h.DB.First(&cache, "chave = ?", chaveIdempotencia).Error
+		switch {
+		case err == nil:
+			c.Data(cache.StatusHTTP, "application/json; charset=utf-8", []byte(cache.Resultado))
+			return
+		case !errors.Is(err, gorm.ErrRecordNotFound):
+			respondError(c, http.StatusInternalServerError, "erro ao verificar idempotency key")
+			return
+		}
 	}
 
 	// Claim atômico: Aberta -> Processando. Reserva a nota para esta
@@ -220,7 +240,23 @@ func (h *NotaFiscalHandler) Imprimir(c *gin.Context) {
 	}
 
 	nota.Status = models.StatusFechada
-	c.JSON(http.StatusOK, nota)
+
+	corpo, err := json.Marshal(nota)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "erro ao serializar resposta")
+		return
+	}
+
+	if chaveIdempotencia != "" {
+		h.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.IdempotencyKey{
+			Chave:      chaveIdempotencia,
+			StatusHTTP: http.StatusOK,
+			Resultado:  string(corpo),
+			CriadoEm:   time.Now(),
+		})
+	}
+
+	c.Data(http.StatusOK, "application/json; charset=utf-8", corpo)
 }
 
 // reabrirNota volta a nota para Aberta após uma falha no débito, para que
