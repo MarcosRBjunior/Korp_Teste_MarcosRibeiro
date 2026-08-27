@@ -5,8 +5,13 @@ import "time"
 type StatusNota string
 
 const (
-	StatusAberta  StatusNota = "Aberta"
-	StatusFechada StatusNota = "Fechada"
+	StatusAberta StatusNota = "Aberta"
+	// StatusProcessando é um estado transitório: claim atômico feito pelo
+	// Imprimir para reservar a nota antes de chamar o Estoque, evitando que
+	// duas impressões concorrentes debitem o mesmo saldo duas vezes. Reverte
+	// para Aberta se o débito falhar, ou avança para Fechada se tiver sucesso.
+	StatusProcessando StatusNota = "Processando"
+	StatusFechada     StatusNota = "Fechada"
 )
 
 type NotaFiscal struct {

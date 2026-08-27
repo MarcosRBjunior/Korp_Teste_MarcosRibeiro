@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MarcosRBjunior/Korp_Teste_MarcosRibeiro/services/faturamento/internal/database"
+	"github.com/MarcosRBjunior/Korp_Teste_MarcosRibeiro/services/faturamento/internal/estoqueclient"
 	"github.com/MarcosRBjunior/Korp_Teste_MarcosRibeiro/services/faturamento/internal/models"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -18,11 +19,12 @@ import (
 var errNotaFechada = errors.New("nota fiscal não está Aberta")
 
 type NotaFiscalHandler struct {
-	DB *gorm.DB
+	DB      *gorm.DB
+	Estoque *estoqueclient.Client
 }
 
-func NewNotaFiscalHandler(db *gorm.DB) *NotaFiscalHandler {
-	return &NotaFiscalHandler{DB: db}
+func NewNotaFiscalHandler(db *gorm.DB, estoque *estoqueclient.Client) *NotaFiscalHandler {
+	return &NotaFiscalHandler{DB: db, Estoque: estoque}
 }
 
 type itemRequest struct {
@@ -163,9 +165,10 @@ func (h *NotaFiscalHandler) BuscarPorID(c *gin.Context) {
 // Imprimir godoc
 // POST /notas/:id/imprimir
 //
-// Nesta fase a impressão apenas fecha a nota (Aberta -> Fechada). A chamada
-// ao serviço de Estoque para debitar o saldo, protegida por circuit breaker,
-// e a idempotência via header Idempotency-Key entram nas Fases 4 e 5.
+// Debita o saldo de cada item no Estoque (via circuit breaker) antes de
+// fechar a nota — nunca o contrário, para não fechar uma nota cujo saldo
+// não foi confirmado. A idempotência via header Idempotency-Key entra na
+// Fase 5.
 func (h *NotaFiscalHandler) Imprimir(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -173,19 +176,19 @@ func (h *NotaFiscalHandler) Imprimir(c *gin.Context) {
 		return
 	}
 
-	// Update condicional e atômico: só fecha se a nota ainda estiver Aberta.
-	// Evita que duas impressões concorrentes fechem a nota mais de uma vez
-	// (o que, a partir da Fase 4, poderia gerar um débito duplicado no Estoque).
-	result := h.DB.Model(&models.NotaFiscal{}).
+	// Claim atômico: Aberta -> Processando. Reserva a nota para esta
+	// impressão e impede que uma segunda impressão concorrente também
+	// passe a chamar o Estoque para os mesmos itens.
+	claim := h.DB.Model(&models.NotaFiscal{}).
 		Where("id = ? AND status = ?", id, models.StatusAberta).
-		Update("status", models.StatusFechada)
+		Update("status", models.StatusProcessando)
 
-	if result.Error != nil {
-		respondError(c, http.StatusInternalServerError, "erro ao fechar nota fiscal")
+	if claim.Error != nil {
+		respondError(c, http.StatusInternalServerError, "erro ao iniciar impressão da nota fiscal")
 		return
 	}
 
-	if result.RowsAffected == 0 {
+	if claim.RowsAffected == 0 {
 		if _, status, err := h.buscarNotaPorID(id); err != nil {
 			respondError(c, status, err.Error())
 			return
@@ -196,10 +199,51 @@ func (h *NotaFiscalHandler) Imprimir(c *gin.Context) {
 
 	nota, status, err := h.buscarNotaPorID(id)
 	if err != nil {
+		h.reabrirNota(id)
 		respondError(c, status, err.Error())
 		return
 	}
+
+	for _, item := range nota.Itens {
+		if err := h.Estoque.Debitar(c.Request.Context(), item.ProdutoID, item.Quantidade); err != nil {
+			h.reabrirNota(id)
+			respondErroDebito(c, err)
+			return
+		}
+	}
+
+	if err := h.DB.Model(&models.NotaFiscal{}).
+		Where("id = ?", id).
+		Update("status", models.StatusFechada).Error; err != nil {
+		respondError(c, http.StatusInternalServerError, "erro ao fechar nota fiscal")
+		return
+	}
+
+	nota.Status = models.StatusFechada
 	c.JSON(http.StatusOK, nota)
+}
+
+// reabrirNota volta a nota para Aberta após uma falha no débito, para que
+// ela possa ser reimpressa depois. Erro aqui só é logado: já estamos no
+// caminho de erro do Imprimir e a resposta ao cliente não deve mudar por
+// causa disso.
+func (h *NotaFiscalHandler) reabrirNota(id uint64) {
+	h.DB.Model(&models.NotaFiscal{}).
+		Where("id = ? AND status = ?", id, models.StatusProcessando).
+		Update("status", models.StatusAberta)
+}
+
+func respondErroDebito(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, estoqueclient.ErrIndisponivel):
+		respondError(c, http.StatusServiceUnavailable, "serviço de estoque indisponível, tente novamente em instantes")
+	case errors.Is(err, estoqueclient.ErrSaldoInsuficiente):
+		respondError(c, http.StatusConflict, "saldo insuficiente no estoque para um dos produtos da nota")
+	case errors.Is(err, estoqueclient.ErrProdutoNaoEncontrado):
+		respondError(c, http.StatusUnprocessableEntity, "produto da nota não encontrado no estoque")
+	default:
+		respondError(c, http.StatusInternalServerError, "erro ao debitar saldo no estoque")
+	}
 }
 
 func (h *NotaFiscalHandler) buscarNotaPorID(id uint64) (*models.NotaFiscal, int, error) {
