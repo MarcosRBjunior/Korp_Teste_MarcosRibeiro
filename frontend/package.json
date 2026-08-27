@@ -22,6 +22,7 @@
     "@ng-icons/lucide": "^31.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "ngx-sonner": "^3.1.0",
     "rxjs": "~7.8.0",
     "tailwind-merge": "^3.6.0",
     "tslib": "^2.3.0",
