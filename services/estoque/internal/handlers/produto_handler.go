@@ -4,11 +4,11 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/MarcosRBjunior/Korp_Teste_MarcosRibeiro/services/estoque/internal/models"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -76,7 +76,13 @@ func (h *ProdutoHandler) Listar(c *gin.Context) {
 // BuscarPorID godoc
 // GET /produtos/:id
 func (h *ProdutoHandler) BuscarPorID(c *gin.Context) {
-	produto, status, err := h.buscarProduto(c.Param("id"))
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "id inválido")
+		return
+	}
+
+	produto, status, err := h.buscarProdutoPorID(id)
 	if err != nil {
 		respondError(c, status, err.Error())
 		return
@@ -112,7 +118,7 @@ func (h *ProdutoHandler) Debitar(c *gin.Context) {
 	}
 
 	if result.RowsAffected == 0 {
-		produto, status, err := h.buscarProduto(c.Param("id"))
+		produto, status, err := h.buscarProdutoPorID(id)
 		if err != nil {
 			respondError(c, status, err.Error())
 			return
@@ -121,7 +127,7 @@ func (h *ProdutoHandler) Debitar(c *gin.Context) {
 		return
 	}
 
-	produto, status, err := h.buscarProduto(c.Param("id"))
+	produto, status, err := h.buscarProdutoPorID(id)
 	if err != nil {
 		respondError(c, status, err.Error())
 		return
@@ -129,12 +135,7 @@ func (h *ProdutoHandler) Debitar(c *gin.Context) {
 	c.JSON(http.StatusOK, produto)
 }
 
-func (h *ProdutoHandler) buscarProduto(idParam string) (*models.Produto, int, error) {
-	id, err := strconv.ParseUint(idParam, 10, 64)
-	if err != nil {
-		return nil, http.StatusBadRequest, errors.New("id inválido")
-	}
-
+func (h *ProdutoHandler) buscarProdutoPorID(id uint64) (*models.Produto, int, error) {
 	var produto models.Produto
 	if err := h.DB.First(&produto, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -147,5 +148,6 @@ func (h *ProdutoHandler) buscarProduto(idParam string) (*models.Produto, int, er
 }
 
 func isUniqueViolation(err error) bool {
-	return strings.Contains(err.Error(), "duplicate key value violates unique constraint")
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

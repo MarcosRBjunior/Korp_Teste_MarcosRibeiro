@@ -20,7 +20,7 @@ func main() {
 
 	router := gin.Default()
 	produtoHandler := handlers.NewProdutoHandler(db)
-	routes.Setup(router, produtoHandler)
+	routes.Setup(router, db, produtoHandler)
 
 	log.Printf("serviço de estoque rodando na porta %s", cfg.Port)
 	if err := router.Run(":" + cfg.Port); err != nil {

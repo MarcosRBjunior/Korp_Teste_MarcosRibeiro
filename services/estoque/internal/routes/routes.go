@@ -1,13 +1,21 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/MarcosRBjunior/Korp_Teste_MarcosRibeiro/services/estoque/internal/handlers"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-func Setup(router *gin.Engine, produtoHandler *handlers.ProdutoHandler) {
+func Setup(router *gin.Engine, db *gorm.DB, produtoHandler *handlers.ProdutoHandler) {
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		sqlDB, err := db.DB()
+		if err != nil || sqlDB.Ping() != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "erro", "database": "indisponível"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "database": "conectado"})
 	})
 
 	produtos := router.Group("/produtos")
