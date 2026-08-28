@@ -1,11 +1,13 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, Injector, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, Injector, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { FormsModule } from '@angular/forms';
 import { filter, finalize } from 'rxjs';
 
 import { mensagemDeErro } from '@/core/api-error';
 import { ZardBadgeComponent, type ZardBadgeTypeVariants } from '@/shared/components/badge';
 import { ZardButtonComponent } from '@/shared/components/button';
 import { ZardDialogService } from '@/shared/components/dialog';
+import { ZardInputComponent } from '@/shared/components/input';
 import { ZardSonnerService } from '@/shared/components/sonner';
 import { ZardSpinnerComponent } from '@/shared/components/spinner';
 import { ZardTableImports } from '@/shared/components/table';
@@ -22,7 +24,7 @@ const BADGE_POR_STATUS: Record<StatusNota, ZardBadgeTypeVariants> = {
 
 @Component({
   selector: 'app-notas-page',
-  imports: [ZardBadgeComponent, ZardButtonComponent, ZardSpinnerComponent, ...ZardTableImports],
+  imports: [FormsModule, ZardBadgeComponent, ZardButtonComponent, ZardInputComponent, ZardSpinnerComponent, ...ZardTableImports],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-4 p-6">
@@ -30,6 +32,15 @@ const BADGE_POR_STATUS: Record<StatusNota, ZardBadgeTypeVariants> = {
         <h1 class="text-xl font-semibold">Notas Fiscais</h1>
         <button z-button (click)="abrirCadastro()">Nova nota</button>
       </div>
+
+      <input
+        z-input
+        type="text"
+        placeholder="Buscar por número ou status..."
+        class="max-w-sm"
+        [(ngModel)]="busca"
+        [ngModelOptions]="{ standalone: true }"
+      />
 
       @if (carregando()) {
         <div class="flex justify-center py-10">
@@ -46,7 +57,7 @@ const BADGE_POR_STATUS: Record<StatusNota, ZardBadgeTypeVariants> = {
             </tr>
           </thead>
           <tbody z-table-body>
-            @for (nota of notas(); track nota.id) {
+            @for (nota of notasFiltradas(); track nota.id) {
               <tr z-table-row>
                 <td z-table-cell>#{{ nota.numero_sequencial }}</td>
                 <td z-table-cell>
@@ -67,7 +78,9 @@ const BADGE_POR_STATUS: Record<StatusNota, ZardBadgeTypeVariants> = {
               </tr>
             } @empty {
               <tr z-table-row>
-                <td z-table-cell colspan="4" class="text-center text-muted-foreground">Nenhuma nota fiscal cadastrada.</td>
+                <td z-table-cell colspan="4" class="text-center text-muted-foreground">
+                  {{ busca() ? 'Nenhuma nota encontrada.' : 'Nenhuma nota fiscal cadastrada.' }}
+                </td>
               </tr>
             }
           </tbody>
@@ -86,6 +99,17 @@ export class NotasPageComponent implements OnInit {
   readonly notas = signal<NotaFiscal[]>([]);
   readonly carregando = signal(false);
   readonly imprimindo = signal<Set<number>>(new Set());
+  readonly busca = signal('');
+
+  readonly notasFiltradas = computed(() => {
+    const termo = this.busca().trim().toLowerCase();
+    if (termo === '') {
+      return this.notas();
+    }
+    return this.notas().filter(
+      n => n.numero_sequencial.toString().includes(termo) || n.status.toLowerCase().includes(termo),
+    );
+  });
 
   ngOnInit(): void {
     this.carregar();
