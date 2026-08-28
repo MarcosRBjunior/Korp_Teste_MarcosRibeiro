@@ -11,3 +11,14 @@ export interface NovoProduto {
   descricao: string;
   saldo: number;
 }
+
+export function filtrarProdutos(produtos: Produto[], termo: string): Produto[] {
+  const termoNormalizado = termo.trim().toLowerCase();
+  if (termoNormalizado === '') {
+    return produtos;
+  }
+
+  return produtos.filter(
+    p => p.codigo.toLowerCase().includes(termoNormalizado) || p.descricao.toLowerCase().includes(termoNormalizado),
+  );
+}

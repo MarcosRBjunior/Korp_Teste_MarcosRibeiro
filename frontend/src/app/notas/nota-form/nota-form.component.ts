@@ -8,7 +8,7 @@ import { ZardDialogRef } from '@/shared/components/dialog';
 import { ZardInputComponent } from '@/shared/components/input';
 import { ZardSonnerService } from '@/shared/components/sonner';
 
-import type { Produto } from '../../produtos/produto.model';
+import { filtrarProdutos, type Produto } from '../../produtos/produto.model';
 import { ProdutoService } from '../../produtos/produto.service';
 import type { NotaFiscal } from '../nota.model';
 import { NotaFiscalService } from '../nota.service';
@@ -165,14 +165,7 @@ export class NotaFormComponent implements OnInit {
   }
 
   produtosFiltrados(linha: LinhaItem): Produto[] {
-    const termo = linha.busca.trim().toLowerCase();
-    if (termo === '') {
-      return this.produtos();
-    }
-
-    return this.produtos().filter(
-      p => p.codigo.toLowerCase().includes(termo) || p.descricao.toLowerCase().includes(termo),
-    );
+    return filtrarProdutos(this.produtos(), linha.busca);
   }
 
   abrirSugestoes(chave: number): void {
@@ -199,7 +192,7 @@ export class NotaFormComponent implements OnInit {
 
   selecionarPrimeiraSugestao(chave: number): void {
     const linha = this.linhas().find(l => l.chave === chave);
-    if (!linha) {
+    if (!linha || linha.busca.trim() === '') {
       return;
     }
 

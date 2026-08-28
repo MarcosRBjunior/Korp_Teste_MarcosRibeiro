@@ -13,7 +13,7 @@ import { ZardSpinnerComponent } from '@/shared/components/spinner';
 import { ZardTableImports } from '@/shared/components/table';
 
 import { ProdutoFormComponent } from '../produto-form/produto-form.component';
-import type { Produto } from '../produto.model';
+import { filtrarProdutos, type Produto } from '../produto.model';
 import { ProdutoService } from '../produto.service';
 
 const SALDO_BAIXO = 5;
@@ -88,15 +88,7 @@ export class ProdutosPageComponent implements OnInit {
   readonly busca = signal('');
   readonly SALDO_BAIXO = SALDO_BAIXO;
 
-  readonly produtosFiltrados = computed(() => {
-    const termo = this.busca().trim().toLowerCase();
-    if (termo === '') {
-      return this.produtos();
-    }
-    return this.produtos().filter(
-      p => p.codigo.toLowerCase().includes(termo) || p.descricao.toLowerCase().includes(termo),
-    );
-  });
+  readonly produtosFiltrados = computed(() => filtrarProdutos(this.produtos(), this.busca()));
 
   ngOnInit(): void {
     this.carregar();
