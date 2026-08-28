@@ -193,6 +193,7 @@ export class ZardDialogOptions<T, U> {
   host: {
     '[class]': 'classes()',
     '[style.width]': 'config.zWidth ? config.zWidth : null',
+    '[style.max-width]': 'config.zWidth ? config.zWidth : null',
     '[style.--z-dialog-duration]': 'durationCss()',
     'data-slot': 'dialog-content',
     role: 'dialog',
