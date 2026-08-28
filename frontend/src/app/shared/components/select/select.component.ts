@@ -95,7 +95,7 @@ let nextSelectId = 0;
               <span class="truncate">{{ label }}</span>
             </z-badge>
           } @else {
-            <span class="truncate">{{ label }}</span>
+            <span class="min-w-0 truncate">{{ label }}</span>
           }
         } @empty {
           <span class="text-muted-foreground truncate">{{ zPlaceholder() }}</span>

@@ -46,7 +46,7 @@ interface SelectHost {
         />
       }
     </span>
-    <span data-slot="select-item-text" class="truncate">
+    <span data-slot="select-item-text" class="min-w-0 truncate">
       <ng-content />
     </span>
   `,
