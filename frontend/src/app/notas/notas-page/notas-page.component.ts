@@ -111,7 +111,7 @@ export class NotasPageComponent implements OnInit {
       zTitle: 'Nova nota fiscal',
       zContent: NotaFormComponent,
       zHideFooter: true,
-      zWidth: '520px',
+      zWidth: '600px',
     });
 
     toObservable(dialogRef.result, { injector: this.injector })
@@ -146,8 +146,16 @@ export class NotasPageComponent implements OnInit {
           this.sonner.success(`Nota #${notaImpressa.numero_sequencial} impressa, saldo debitado.`);
         },
         error: err => {
+          const status = (err as { status?: number })?.status;
+
+          if (status === 409) {
+            this.sonner.error('Esta nota já foi impressa (ou não está mais aberta) e não pode ser impressa de novo.');
+            this.carregar();
+            return;
+          }
+
           const mensagem =
-            (err as { status?: number })?.status === 503
+            status === 503
               ? 'Estoque indisponível no momento, tente novamente em instantes.'
               : mensagemDeErro(err, 'Erro ao imprimir nota fiscal.');
           this.sonner.error(mensagem);
