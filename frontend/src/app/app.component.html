@@ -1,19 +1,54 @@
-<div class="min-h-screen bg-background text-foreground">
-  <header class="border-b">
-    <nav class="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4">
-      <span class="font-semibold">Notas Fiscais</span>
-      <a routerLink="/produtos" routerLinkActive="text-primary font-medium" class="text-sm text-muted-foreground hover:text-foreground">
-        Produtos
-      </a>
-      <a routerLink="/notas" routerLinkActive="text-primary font-medium" class="text-sm text-muted-foreground hover:text-foreground">
-        Notas Fiscais
-      </a>
-    </nav>
-  </header>
+<z-sidebar-provider class="min-h-screen bg-background text-foreground">
+  <z-sidebar>
+    <z-sidebar-header>
+      <div class="flex items-center gap-2 px-2 py-1.5">
+        <span class="text-sm font-semibold">Emissor de Nota Fiscal</span>
+      </div>
+    </z-sidebar-header>
 
-  <main class="mx-auto max-w-5xl">
-    <router-outlet />
-  </main>
-</div>
+    <z-sidebar-content>
+      <z-sidebar-group>
+        <ul z-sidebar-menu>
+          <li z-sidebar-menu-item>
+            <a
+              z-sidebar-menu-button
+              routerLink="/produtos"
+              routerLinkActive
+              #produtosLink="routerLinkActive"
+              [zActive]="produtosLink.isActive"
+              zTooltip="Produtos"
+            >
+              <ng-icon name="lucidePackage" />
+              <span>Produtos</span>
+            </a>
+          </li>
+          <li z-sidebar-menu-item>
+            <a
+              z-sidebar-menu-button
+              routerLink="/notas"
+              routerLinkActive
+              #notasLink="routerLinkActive"
+              [zActive]="notasLink.isActive"
+              zTooltip="Notas Fiscais"
+            >
+              <ng-icon name="lucideFileText" />
+              <span>Notas Fiscais</span>
+            </a>
+          </li>
+        </ul>
+      </z-sidebar-group>
+    </z-sidebar-content>
+  </z-sidebar>
+
+  <z-sidebar-inset>
+    <header class="flex items-center gap-2 border-b px-4 py-3">
+      <button z-sidebar-trigger></button>
+    </header>
+
+    <main>
+      <router-outlet />
+    </main>
+  </z-sidebar-inset>
+</z-sidebar-provider>
 
 <z-sonner [richColors]="true" [closeButton]="true" />
