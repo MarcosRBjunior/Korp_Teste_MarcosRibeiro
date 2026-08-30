@@ -173,7 +173,7 @@ export class NotasPageComponent implements OnInit {
           const status = (err as { status?: number })?.status;
 
           if (status === 409) {
-            this.sonner.error('Esta nota já foi impressa (ou não está mais aberta) e não pode ser impressa de novo.');
+            this.sonner.error(mensagemDeErro(err, 'Esta nota não está mais aberta e não pode ser impressa de novo.'));
             this.carregar();
             return;
           }
